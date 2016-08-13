@@ -1,0 +1,24 @@
+{
+    "author": "bhardie.pebble@gmail.com",
+    "dependencies": {},
+    "keywords": [],
+    "name": "soccertime",
+    "pebble": {
+        "capabilities": [
+            ""
+        ],
+        "displayName": "SoccerTime",
+        "enableMultiJS": false,
+        "messageKeys": {},
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "uuid": "18b3bf04-c354-4747-ac05-bad75c0f3830",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "1.0.0"
+}
