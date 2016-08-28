@@ -7,11 +7,69 @@ int g_count = 0;
 char buffer [10];
 bool running = false;
 
+bool regulation_time_passed = false;
+int last_minute = 0;
+
+uint32_t *vibe_a = NULL;
+
+void setup_vibe_array(int num_vibes)
+{
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "setup_vibe_array %d", num_vibes);
+  // Get the total number of elements we need
+  int count = (num_vibes*2) - 1;
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "setup_vibe_array total_elems: %d", count);
+  
+  // Free any existing data
+  if (vibe_a != NULL)
+    free(vibe_a);
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "setup_vibe_array mem_size: %d", count * sizeof(uint32_t));
+  
+  // Allocate space for the array
+  vibe_a = (uint32_t*)malloc(count * sizeof(uint32_t));
+
+  // Build the array
+  for (int i = 0; i<count; i++)
+  {
+    // If it's an even element, we use our vibe time
+    if (i % 2 == 0)
+    {
+      vibe_a[i] = 200;
+    }
+    // If its an odd element, we use our quiet time
+    else
+    {
+      vibe_a[i] = 100;
+    }
+  }
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "setup_vibe_array returning");
+}
+
+void custom_vibe_pulse(int num_vibes)
+{
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "custom_vibe_pulse %d", num_vibes);
+  setup_vibe_array(num_vibes);
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "custom_vibe_pulse setup VibePattern");
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "custom_vibe_pulse array length: %d", ARRAY_LENGTH(vibe_a));
+  VibePattern pat = {
+    .durations = vibe_a,
+    .num_segments = ARRAY_LENGTH(vibe_a),
+  };
+ 
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "custom_vibe_pulse time to vibe!");
+  vibes_enqueue_custom_pattern(pat);
+}
 
 // Converts integer seconds into a string in the format of
 // M:SS and stores in provided buffer
 void format_time(char * buffer, int buf_len, int time_in_seconds)
 {
+  if (time_in_seconds < 0)
+    time_in_seconds *= -1;
+  
   int min = time_in_seconds / 60;
   int sec = time_in_seconds % 60;
 
@@ -25,19 +83,60 @@ void display_current_time()
   text_layer_set_text(text_layer, buffer);
 }
 
-void reset_counter()
+static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
+  g_count -= 1;
+  int cur_time = g_count;
+  display_current_time();
+  
+  if (cur_time < 0)
+  {
+    cur_time *= -1;
+  }
+  
+  // If this is the first tick since we hit 0
+  if (!regulation_time_passed && cur_time <= 0)
+  {
+    regulation_time_passed = true;
+    vibes_long_pulse();
+  }
+  
+  if (regulation_time_passed && (cur_time / 60) > last_minute)
+  {
+    last_minute = cur_time / 60;
+    custom_vibe_pulse(last_minute);
+  }
+}
+
+void start_counter()
+{
+  running = true;
+  tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+}
+
+void stop_counter()
 {
   running = false;
-  g_count = 45 * 60; // 45 minutes in seconds 
+  tick_timer_service_unsubscribe();
+}
+
+void reset_counter()
+{
+  g_count = 45 * 60; // 45 minutes in seconds
+  regulation_time_passed = false;
+  last_minute = 0;
   display_current_time();
 }
 
-static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
-  g_count -= 1;
+// For testing - Starts the clock at 5s instead of 45m
+static void long_down_handler(ClickRecognizerRef recognizer, void *context) {
+  stop_counter();
+  reset_counter();
+  g_count = 5;
   display_current_time();
 }
 
 static void long_select_handler(ClickRecognizerRef recognizer, void *context) {
+  stop_counter();
   reset_counter();
 }
 
@@ -45,11 +144,9 @@ void select_click_handler(ClickRecognizerRef recognizer, void *context)
 {
   if (!running)
   {
-    running = true;
-    tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+    start_counter();
   } else {
-    running = false;
-    tick_timer_service_unsubscribe();
+    stop_counter();
   }
 }
 
@@ -57,6 +154,7 @@ void click_config_provider(void *context)
 {
     window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
     window_long_click_subscribe(BUTTON_ID_SELECT, 1000, long_select_handler, NULL);
+    window_long_click_subscribe(BUTTON_ID_DOWN, 2000, long_down_handler, NULL);
 }
 
 void window_load(Window *window)
@@ -93,6 +191,9 @@ void handle_init(void) {
 
 void handle_deinit(void) {
   window_destroy(my_window);
+  
+  if (vibe_a != NULL)
+    free(vibe_a);
 }
 
 int main(void) {
