@@ -1,5 +1,6 @@
 #include <pebble.h>
 #include <pebble.h>
+#include "vibe_helper.h"
 
 Window *my_window;
 TextLayer *text_layer;
@@ -9,59 +10,6 @@ bool running = false;
 
 bool regulation_time_passed = false;
 int last_minute = 0;
-
-uint32_t *vibe_a = NULL;
-
-void setup_vibe_array(int num_vibes)
-{
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "setup_vibe_array %d", num_vibes);
-  // Get the total number of elements we need
-  int count = (num_vibes*2) - 1;
-  
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "setup_vibe_array total_elems: %d", count);
-  
-  // Free any existing data
-  if (vibe_a != NULL)
-    free(vibe_a);
-  
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "setup_vibe_array mem_size: %d", count * sizeof(uint32_t));
-  
-  // Allocate space for the array
-  vibe_a = (uint32_t*)malloc(count * sizeof(uint32_t));
-
-  // Build the array
-  for (int i = 0; i<count; i++)
-  {
-    // If it's an even element, we use our vibe time
-    if (i % 2 == 0)
-    {
-      vibe_a[i] = 200;
-    }
-    // If its an odd element, we use our quiet time
-    else
-    {
-      vibe_a[i] = 100;
-    }
-  }
-  
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "setup_vibe_array returning");
-}
-
-void custom_vibe_pulse(int num_vibes)
-{
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "custom_vibe_pulse %d", num_vibes);
-  setup_vibe_array(num_vibes);
-  
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "custom_vibe_pulse setup VibePattern");
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "custom_vibe_pulse array length: %d", ARRAY_LENGTH(vibe_a));
-  VibePattern pat = {
-    .durations = vibe_a,
-    .num_segments = ARRAY_LENGTH(vibe_a),
-  };
- 
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "custom_vibe_pulse time to vibe!");
-  vibes_enqueue_custom_pattern(pat);
-}
 
 // Converts integer seconds into a string in the format of
 // M:SS and stores in provided buffer
@@ -103,7 +51,11 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   if (regulation_time_passed && (cur_time / 60) > last_minute)
   {
     last_minute = cur_time / 60;
-    custom_vibe_pulse(last_minute);
+    
+    struct CustomVibe cv = init_vibe_pattern(last_minute);
+    play_pattern(cv);
+    teardown(cv);
+    //custom_vibe_pulse(last_minute);
   }
 }
 
@@ -191,9 +143,6 @@ void handle_init(void) {
 
 void handle_deinit(void) {
   window_destroy(my_window);
-  
-  if (vibe_a != NULL)
-    free(vibe_a);
 }
 
 int main(void) {
